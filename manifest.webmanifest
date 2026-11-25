@@ -1,0 +1,14 @@
+{
+  "name": "Taskflow",
+  "short_name": "Taskflow",
+  "description": "Görevler, notlar, takvim, odak modu ve verimlilik paneli.",
+  "lang": "tr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0b1a",
+  "theme_color": "#0b0b1a",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

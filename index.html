@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="description" content="Taskflow — görevler, notlar, takvim, odak modu ve verimlilik paneli tek bir uygulamada." />
+<title>Taskflow</title>
+<meta name="theme-color" content="#0b0b1a" />
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icons/icon.svg" />
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#a855f7" />
+        <stop offset="100%" stop-color="#3b82f6" />
+      </linearGradient>
+    </defs>
+  </svg>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <div class="app">
+    <!-- ============ SIDEBAR ============ -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo" data-icon="logo"></div>
+        <div>
+          <div class="brand-name">Taskflow</div>
+          <div class="brand-sub">Productivity Suite</div>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <div class="nav-label">Çalışma alanı</div>
+        <button class="nav-item" data-view="tasks"><span data-icon="list"></span>Görevler<b data-vcount="tasks">0</b></button>
+        <button class="nav-item" data-view="notes"><span data-icon="note"></span>Notlar<b data-vcount="notes">0</b></button>
+        <button class="nav-item" data-view="calendar"><span data-icon="calendarDays"></span>Takvim</button>
+        <button class="nav-item" data-view="stats"><span data-icon="chart"></span>Verimlilik</button>
+        <button class="nav-item" data-open-focus><span data-icon="timer"></span>Odak modu</button>
+
+        <div class="nav-group" data-for="tasks">
+          <div class="nav-label">Görünümler</div>
+          <button class="nav-item" data-status="all"><span data-icon="list"></span>Tüm görevler<b data-count="all">0</b></button>
+          <button class="nav-item" data-status="pending"><span data-icon="clock"></span>Bekleyen<b data-count="pending">0</b></button>
+          <button class="nav-item" data-status="completed"><span data-icon="checkCircle"></span>Tamamlanan<b data-count="completed">0</b></button>
+
+          <div class="nav-label">Öncelik</div>
+          <button class="nav-item" data-prio="high"><i class="dot dot-high"></i>Yüksek<b data-count="high">0</b></button>
+          <button class="nav-item" data-prio="medium"><i class="dot dot-medium"></i>Orta<b data-count="medium">0</b></button>
+          <button class="nav-item" data-prio="low"><i class="dot dot-low"></i>Düşük<b data-count="low">0</b></button>
+        </div>
+
+        <div class="nav-group" data-for="notes" hidden>
+          <div class="nav-label">Not defteri</div>
+          <button class="nav-item" data-nfilter="all"><span data-icon="note"></span>Tüm notlar<b data-ncount="all">0</b></button>
+          <button class="nav-item" data-nfilter="pinned"><span data-icon="pin"></span>Sabitlenenler<b data-ncount="pinned">0</b></button>
+          <button class="nav-item" data-nfilter="archived"><span data-icon="archive"></span>Arşiv<b data-ncount="archived">0</b></button>
+          <button class="nav-item" data-nfilter="trash"><span data-icon="trash"></span>Çöp kutusu<b data-ncount="trash">0</b></button>
+
+          <div class="nav-label">Etiketler</div>
+          <div class="nav-group" id="sideTags"></div>
+        </div>
+      </nav>
+
+      <div class="progress-card">
+        <div class="ring" id="ring">
+          <svg viewBox="0 0 120 120">
+            <circle class="ring-track" cx="60" cy="60" r="50" />
+            <circle class="ring-fill" cx="60" cy="60" r="50" />
+          </svg>
+          <div class="ring-label"><strong id="ringPct">0%</strong><span>tamamlandı</span></div>
+        </div>
+        <p class="progress-text" id="progressText">Harika gidiyorsun!</p>
+      </div>
+    </aside>
+
+    <!-- ============ MAIN ============ -->
+    <main class="main">
+     <section class="view" id="viewTasks" aria-label="Görevler">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="today">—</p>
+          <h1 id="greeting">Merhaba 👋</h1>
+          <p class="subtitle">Bugünün odak noktalarını yönet, hedeflerine adım adım ulaş.</p>
+        </div>
+        <div class="topbar-actions">
+          <button class="install-btn" id="installBtn" type="button" hidden><span data-icon="download"></span><em>Uygulamayı yükle</em></button>
+          <button class="focus-cta" id="focusCta" type="button" title="Odak modu (Pomodoro)"><span data-icon="timer"></span><em>Odak modu</em></button>
+          <div class="mobile-ring" aria-hidden="true">
+            <svg viewBox="0 0 120 120">
+              <circle class="ring-track" cx="60" cy="60" r="50" />
+              <circle class="ring-fill" cx="60" cy="60" r="50" />
+            </svg>
+            <strong id="mobilePct">0%</strong>
+          </div>
+        </div>
+      </header>
+
+      <!-- Stats -->
+      <section class="stats">
+        <article class="stat stat-total">
+          <div class="stat-icon" data-icon="list"></div>
+          <div class="stat-body"><span>Toplam görev</span><strong id="statTotal">0</strong></div>
+        </article>
+        <article class="stat stat-done">
+          <div class="stat-icon" data-icon="checkCircle"></div>
+          <div class="stat-body"><span>Tamamlanan</span><strong id="statDone">0</strong></div>
+        </article>
+        <article class="stat stat-pending">
+          <div class="stat-icon" data-icon="clock"></div>
+          <div class="stat-body"><span>Bekleyen</span><strong id="statPending">0</strong></div>
+        </article>
+        <article class="stat stat-rate">
+          <div class="stat-icon" data-icon="target"></div>
+          <div class="stat-body"><span>Verimlilik</span><strong id="statRate">0%</strong></div>
+          <div class="stat-bar"><i id="statBar"></i></div>
+        </article>
+      </section>
+
+      <!-- Add task -->
+      <form class="composer" id="composer" autocomplete="off" novalidate>
+        <div class="composer-row">
+          <div class="composer-input">
+            <span data-icon="sparkles"></span>
+            <input id="taskInput" type="text" maxlength="120" placeholder="Yeni bir görev ekle… örn. Sunum slaytlarını tamamla" aria-label="Görev başlığı" />
+          </div>
+          <button type="submit" class="btn-primary" id="addBtn"><span data-icon="plus"></span><em>Görev Ekle</em></button>
+        </div>
+        <div class="composer-meta">
+          <div class="prio-picker" role="radiogroup" aria-label="Öncelik">
+            <button type="button" class="prio-opt" data-value="low" role="radio"><i class="dot dot-low"></i>Düşük</button>
+            <button type="button" class="prio-opt" data-value="medium" role="radio"><i class="dot dot-medium"></i>Orta</button>
+            <button type="button" class="prio-opt" data-value="high" role="radio"><i class="dot dot-high"></i>Yüksek</button>
+          </div>
+          <label class="meta-field">
+            <span data-icon="tag"></span>
+            <select id="categoryInput" aria-label="Kategori">
+              <option>İş</option>
+              <option>Geliştirme</option>
+              <option>Tasarım</option>
+              <option>İçerik</option>
+              <option>Kişisel</option>
+            </select>
+          </label>
+          <label class="meta-field">
+            <span data-icon="calendar"></span>
+            <input id="dueInput" type="date" aria-label="Bitiş tarihi" />
+          </label>
+          <label class="meta-field">
+            <span data-icon="repeat"></span>
+            <select id="repeatInput" aria-label="Tekrar">
+              <option value="">Tekrar yok</option>
+              <option value="daily">Her gün</option>
+              <option value="weekdays">Hafta içi</option>
+              <option value="weekly">Her hafta</option>
+              <option value="monthly">Her ay</option>
+            </select>
+          </label>
+        </div>
+      </form>
+
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="segmented" id="segmented">
+          <span class="seg-glider"></span>
+          <button data-status="all">Tümü</button>
+          <button data-status="pending">Bekleyen</button>
+          <button data-status="completed">Tamamlanan</button>
+        </div>
+        <div class="toolbar-right">
+          <div class="chip-group" id="prioChips">
+            <button data-prio="all">Tüm öncelikler</button>
+            <button data-prio="high"><i class="dot dot-high"></i>Yüksek</button>
+            <button data-prio="medium"><i class="dot dot-medium"></i>Orta</button>
+            <button data-prio="low"><i class="dot dot-low"></i>Düşük</button>
+          </div>
+          <label class="search">
+            <span data-icon="search"></span>
+            <input id="searchInput" type="search" placeholder="Görevlerde ara…" aria-label="Görevlerde ara" />
+          </label>
+          <label class="meta-field" title="Sıralama">
+            <span data-icon="sort"></span>
+            <select id="taskSort" aria-label="Görev sıralaması">
+              <option value="smart">Akıllı sıralama</option>
+              <option value="manual">Elle (sürükle-bırak)</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <!-- Lists -->
+      <section class="lists">
+        <div class="list-block" id="pendingBlock">
+          <div class="list-head">
+            <h2><span class="head-icon head-pending" data-icon="clock"></span>Bekleyen görevler</h2>
+            <span class="pill" id="pendingCount">0</span>
+          </div>
+          <ul class="task-list" id="pendingList"></ul>
+        </div>
+
+        <div class="list-block" id="completedBlock">
+          <div class="list-head">
+            <h2><span class="head-icon head-done" data-icon="checkCircle"></span>Tamamlanan görevler</h2>
+            <span class="pill" id="completedCount">0</span>
+            <button class="link-btn" id="clearDone" type="button">Tamamlananları temizle</button>
+          </div>
+          <ul class="task-list" id="completedList"></ul>
+        </div>
+      </section>
+     </section>
+
+     <!-- ============ NOTES VIEW ============ -->
+     <section class="view" id="viewNotes" aria-label="Notlar" hidden>
+      <header class="topbar notes-top">
+        <div>
+          <p class="eyebrow"><span data-icon="note"></span>Not defteri</p>
+          <h1>Fikirlerin, <span class="grad-text">tek bir yerde.</span></h1>
+          <p class="subtitle">Not al, listele, etiketle — yapılacakları tek tıkla göreve dönüştür.</p>
+        </div>
+        <div class="topbar-actions">
+          <div class="tpl-wrap">
+            <button class="btn-primary btn-sm" id="newNoteBtn" type="button" title="Yeni not (Alt+N)"><span data-icon="plus"></span><em>Yeni not</em></button>
+            <button class="btn-ghost" id="tplBtn" type="button" aria-haspopup="menu" aria-expanded="false"><span data-icon="template"></span><em>Şablonlar</em></button>
+            <div class="menu" id="tplMenu" role="menu" hidden></div>
+          </div>
+        </div>
+      </header>
+
+      <div class="toolbar">
+        <div class="segmented" id="noteSeg">
+          <span class="seg-glider"></span>
+          <button data-nfilter="all">Tümü</button>
+          <button data-nfilter="pinned">Sabit</button>
+          <button data-nfilter="archived">Arşiv</button>
+          <button data-nfilter="trash">Çöp</button>
+        </div>
+        <div class="toolbar-right">
+          <label class="search">
+            <span data-icon="search"></span>
+            <input id="noteSearch" type="search" placeholder="Notlarda ara… (Ctrl+K)" aria-label="Notlarda ara" />
+          </label>
+          <label class="meta-field">
+            <span data-icon="sort"></span>
+            <select id="noteSort" aria-label="Sıralama">
+              <option value="updated">Son düzenlenen</option>
+              <option value="created">Oluşturulma</option>
+              <option value="title">Başlık (A-Z)</option>
+            </select>
+          </label>
+          <div class="icon-toggle" id="layoutToggle" role="group" aria-label="Görünüm">
+            <button type="button" data-layout="grid" aria-label="Izgara görünümü" title="Izgara"><span data-icon="grid"></span></button>
+            <button type="button" data-layout="list" aria-label="Liste görünümü" title="Liste"><span data-icon="rows"></span></button>
+          </div>
+          <button class="icon-btn-sq" id="backupBtn" type="button" title="Tüm verileri yedekle (.json)" aria-label="Yedekle"><span data-icon="download"></span></button>
+          <button class="icon-btn-sq" id="importBtn" type="button" title="Yedekten geri yükle" aria-label="Yedekten geri yükle"><span data-icon="upload"></span></button>
+          <input type="file" id="importFile" accept="application/json,.json" hidden />
+        </div>
+      </div>
+
+      <div class="tag-row" id="tagRow"></div>
+      <div class="trash-note" id="trashHint" hidden>
+        <span>Çöp kutusundaki notlar 30 gün sonra kalıcı olarak silinir.</span>
+        <button class="link-btn" id="emptyTrash" type="button">Çöpü boşalt</button>
+      </div>
+      <div class="notes-wrap" id="notesGrid"></div>
+     </section>
+
+     <!-- ============ CALENDAR VIEW ============ -->
+     <section class="view" id="viewCalendar" aria-label="Takvim" hidden>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow"><span data-icon="calendarDays"></span>Takvim</p>
+          <h1 id="calTitle">Takvim</h1>
+          <p class="subtitle">Görevlerini günlere yay — sürükleyip bırakarak yeniden planla.</p>
+        </div>
+        <div class="topbar-actions cal-actions">
+          <div class="segmented" id="calMode">
+            <span class="seg-glider"></span>
+            <button type="button" data-calmode="month">Ay</button>
+            <button type="button" data-calmode="week">Hafta</button>
+          </div>
+          <div class="cal-nav">
+            <button type="button" class="icon-btn-sq" data-calnav="-1" aria-label="Önceki"><span data-icon="chevronLeft"></span></button>
+            <button type="button" class="btn-ghost cal-today" data-calnav="0">Bugün</button>
+            <button type="button" class="icon-btn-sq" data-calnav="1" aria-label="Sonraki"><span data-icon="chevronRight"></span></button>
+          </div>
+        </div>
+      </header>
+      <div class="cal-layout">
+        <div class="cal-board" id="calBoard"></div>
+        <aside class="cal-side" id="calSide" aria-label="Seçili gün"></aside>
+      </div>
+     </section>
+
+     <!-- ============ STATS VIEW ============ -->
+     <section class="view" id="viewStats" aria-label="Verimlilik" hidden>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow"><span data-icon="chart"></span>Verimlilik paneli</p>
+          <h1>İlerlemen, <span class="grad-text">bir bakışta.</span></h1>
+          <p class="subtitle">Tamamladığın görevler, odak süren ve çalışma serin.</p>
+        </div>
+        <div class="topbar-actions">
+          <div class="segmented" id="statRange">
+            <span class="seg-glider"></span>
+            <button type="button" data-range="7">Son 7 gün</button>
+            <button type="button" data-range="30">Son 30 gün</button>
+          </div>
+        </div>
+      </header>
+      <section class="kpis" id="kpis"></section>
+      <div class="chart-grid">
+        <article class="panel" id="panelDone"></article>
+        <article class="panel" id="panelFocus"></article>
+        <article class="panel wide" id="panelHeat"></article>
+        <article class="panel" id="panelCats"></article>
+        <article class="panel" id="panelInsights"></article>
+      </div>
+     </section>
+    </main>
+  </div>
+
+  <!-- Mobile bottom navigation -->
+  <nav class="tabbar" aria-label="Bölümler">
+    <button type="button" data-view="tasks"><span data-icon="list"></span>Görevler</button>
+    <button type="button" data-view="notes"><span data-icon="note"></span>Notlar</button>
+    <button type="button" data-view="calendar"><span data-icon="calendarDays"></span>Takvim</button>
+    <button type="button" data-view="stats"><span data-icon="chart"></span>Verimlilik</button>
+  </nav>
+
+  <!-- ============ FOCUS MODE ============ -->
+  <div class="focus-overlay" id="focus" hidden>
+    <div class="focus-inner" role="dialog" aria-modal="true" aria-label="Odak modu" tabindex="-1">
+      <header class="focus-top">
+        <div class="segmented focus-modes" id="focusModes">
+          <span class="seg-glider"></span>
+          <button type="button" data-fmode="focus">Odak</button>
+          <button type="button" data-fmode="short">Kısa mola</button>
+          <button type="button" data-fmode="long">Uzun mola</button>
+        </div>
+        <div class="focus-tools">
+          <button type="button" class="ed-btn" id="fSound" aria-label="Sesi kapat" title="Ses"><span data-icon="volume"></span></button>
+          <button type="button" class="ed-btn" id="fMin" aria-label="Küçült" title="Küçült (sayaç arka planda devam eder)"><span data-icon="minimize"></span></button>
+          <button type="button" class="ed-btn" id="fClose" aria-label="Kapat" title="Kapat (Esc)"><span data-icon="x"></span></button>
+        </div>
+      </header>
+      <div class="focus-center">
+        <div class="focus-ring">
+          <svg viewBox="0 0 300 300" aria-hidden="true">
+            <defs>
+              <linearGradient id="focusGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="var(--f1)" />
+                <stop offset="100%" stop-color="var(--f2)" />
+              </linearGradient>
+            </defs>
+            <circle class="fr-track" cx="150" cy="150" r="136" />
+            <circle class="fr-fill" id="frFill" cx="150" cy="150" r="136" />
+          </svg>
+          <div class="focus-time">
+            <span id="fLabel">Odak zamanı</span>
+            <strong id="fTime" role="timer" aria-live="off">25:00</strong>
+            <div class="focus-dots" id="fDots" aria-label="Tamamlanan odak seansları"></div>
+          </div>
+        </div>
+        <label class="meta-field focus-task"><span data-icon="target"></span><select id="fTask" aria-label="Odaklanılan görev"></select></label>
+        <div class="focus-controls">
+          <button type="button" class="fc-btn" id="fReset" aria-label="Sıfırla" title="Sıfırla"><span data-icon="reset"></span></button>
+          <button type="button" class="fc-main" id="fToggle" aria-label="Başlat" title="Başlat / Duraklat (Boşluk)"><span data-icon="play"></span></button>
+          <button type="button" class="fc-btn" id="fSkip" aria-label="Sonrakine geç" title="Sonrakine geç"><span data-icon="skip"></span></button>
+        </div>
+        <div class="focus-presets" id="fPresets" role="group" aria-label="Süreler">
+          <button type="button" data-preset="25-5">25 / 5 dk</button>
+          <button type="button" data-preset="50-10">50 / 10 dk</button>
+          <button type="button" data-preset="15-3">15 / 3 dk</button>
+        </div>
+        <button type="button" class="btn-ghost focus-done" id="fDone"><span data-icon="checkCircle"></span>Görevi tamamla</button>
+      </div>
+      <p class="focus-today" id="fToday"></p>
+    </div>
+  </div>
+  <button type="button" class="focus-pill" id="focusPill" hidden><span data-icon="timer"></span><span id="pillTime">25:00</span></button>
+  <div class="chart-tip" id="chartTip" role="tooltip" hidden></div>
+
+  <!-- ============ NOTE EDITOR ============ -->
+  <div class="editor-backdrop" id="editor" hidden>
+    <div class="editor" role="dialog" aria-modal="true" aria-label="Not düzenleyici" tabindex="-1">
+      <div class="ed-head">
+        <div class="ed-colors" id="edColors" role="group" aria-label="Not rengi"></div>
+        <div class="ed-actions">
+          <button class="ed-btn" id="edPin" type="button" aria-label="Sabitle"><span data-icon="pin"></span></button>
+          <button class="ed-btn" id="edArchive" type="button" aria-label="Arşivle"><span data-icon="archive"></span></button>
+          <button class="ed-btn" id="edExport" type="button" title="Markdown (.md) olarak indir" aria-label="Markdown olarak indir"><span data-icon="download"></span></button>
+          <button class="ed-btn danger" id="edDelete" type="button" title="Çöpe taşı" aria-label="Çöpe taşı"><span data-icon="trash"></span></button>
+          <button class="ed-btn" id="edClose" type="button" title="Kapat (Esc)" aria-label="Kapat"><span data-icon="x"></span></button>
+        </div>
+      </div>
+      <input id="edTitle" class="ed-title" type="text" placeholder="Başlık" maxlength="120" aria-label="Not başlığı" />
+      <div class="ed-toolbar" id="edToolbar">
+        <button type="button" data-fmt="bold" title="Kalın (Ctrl+B)" aria-label="Kalın"><span data-icon="bold"></span></button>
+        <button type="button" data-fmt="italic" title="İtalik (Ctrl+I)" aria-label="İtalik"><span data-icon="italic"></span></button>
+        <button type="button" data-fmt="strike" title="Üstü çizili" aria-label="Üstü çizili"><span data-icon="strike"></span></button>
+        <span class="ed-sep"></span>
+        <button type="button" data-fmt="h2" title="Başlık" aria-label="Başlık"><span data-icon="heading"></span></button>
+        <button type="button" data-fmt="ul" title="Madde listesi" aria-label="Madde listesi"><span data-icon="ul"></span></button>
+        <button type="button" data-fmt="ol" title="Numaralı liste" aria-label="Numaralı liste"><span data-icon="ol"></span></button>
+        <button type="button" data-fmt="check" title="Yapılacak listesi" aria-label="Yapılacak listesi"><span data-icon="checkSquare"></span></button>
+        <span class="ed-sep"></span>
+        <button type="button" data-fmt="quote" title="Alıntı" aria-label="Alıntı"><span data-icon="quote"></span></button>
+        <button type="button" data-fmt="code" title="Kod" aria-label="Kod"><span data-icon="code"></span></button>
+        <button type="button" data-fmt="link" title="Bağlantı" aria-label="Bağlantı"><span data-icon="link"></span></button>
+        <div class="ed-mode" role="tablist" aria-label="Düzenleme modu">
+          <button type="button" data-mode="edit" role="tab"><span data-icon="pen"></span>Yaz</button>
+          <button type="button" data-mode="preview" role="tab"><span data-icon="eye"></span>Önizle</button>
+        </div>
+      </div>
+      <div class="ed-body">
+        <textarea id="edText" spellcheck="true" aria-label="Not içeriği" placeholder="Yazmaya başla…  **kalın**, - [ ] yapılacak, ## başlık, #etiket"></textarea>
+        <div class="ed-preview md" id="edPreview" hidden></div>
+      </div>
+      <div class="ed-foot">
+        <span id="edMeta">0 kelime</span>
+        <button class="btn-ghost btn-xs" id="edToTasks" type="button" title="Notun içindeki açık yapılacak maddelerini görev listesine ekler"><span data-icon="send"></span>Yapılacakları göreve aktar</button>
+        <span class="ed-saved" id="edSaved">Kaydedildi</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm dialog -->
+  <div class="confirm-backdrop" id="confirm" hidden>
+    <div class="confirm" role="alertdialog" aria-modal="true" aria-labelledby="cfTitle" aria-describedby="cfText">
+      <h3 id="cfTitle"></h3>
+      <p id="cfText"></p>
+      <div class="cf-actions">
+        <button class="btn-ghost" id="cfCancel" type="button">Vazgeç</button>
+        <button class="btn-danger" id="cfOk" type="button">Sil</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-stack" id="toasts" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+  <script src="notes.js"></script>
+  <script src="views.js"></script>
+
+</body>
+</html>
