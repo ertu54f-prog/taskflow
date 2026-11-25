@@ -64,6 +64,11 @@
     trophy: svg('<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>'),
     calendarDays: svg('<rect x="3" y="4.5" width="18" height="17" rx="3"/><path d="M16 2.5v4M8 2.5v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>'),
     undo: svg('<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>'),
+    sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+    moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
+    themeAuto: svg('<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>'),
+    bell: svg('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>'),
+    palette: svg('<circle cx="13.5" cy="6.5" r="1.2"/><circle cx="17.5" cy="10.5" r="1.2"/><circle cx="8.5" cy="7.5" r="1.2"/><circle cx="6.5" cy="12.5" r="1.2"/><path d="M12 2a10 10 0 0 0 0 20c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.3A5.6 5.6 0 0 0 22 11.8C22 6.4 17.5 2 12 2z"/>'),
     party: svg('<path d="M5.8 11.3 2 22l10.7-3.8"/><path d="M4 3h.01M22 8h.01M15 2h.01M22 20h.01"/><path d="m22 2-2.2.8a2.9 2.9 0 0 0-1.9 3.2c.1.9-.6 1.6-1.4 1.6h-.4c-.9 0-1.6.8-1.6 1.6V10"/><path d="M11 13c1.9 1.9 2.8 4.2 2 5-.8.8-3.1-.1-5-2s-2.8-4.2-2-5c.8-.8 3.1.1 5 2z"/>'),
   };
   document.querySelectorAll("[data-icon]").forEach((el) => { el.innerHTML = ICONS[el.dataset.icon] || ""; });
@@ -82,6 +87,8 @@
   };
   // Yerel tarih → "YYYY-MM-DD"
   const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  // Türkçe büyük/küçük harf + ı/i farkını yok sayan karşılaştırma
+  const norm = (s) => s.toLocaleLowerCase("tr").replace(/ı/g, "i");
   const REPEAT_LABEL = { daily: "Her gün", weekdays: "Hafta içi", weekly: "Her hafta", monthly: "Her ay" };
   // Tekrarlayan görevin bir sonraki tarihi (geçmişe düşmez)
   function nextDue(due, rep) {
@@ -99,6 +106,128 @@
     step();
     while (ymd(d) < today) step();
     return ymd(d);
+  }
+
+  /* ---------- Kategoriler (kullanıcı tanımlı, renkli) ---------- */
+  const CAT_KEY = "taskflow.categories.v1";
+  const DEFAULT_CATS = [
+    { name: "İş", color: "#3b82f6" }, { name: "Geliştirme", color: "#22d3ee" },
+    { name: "Tasarım", color: "#f472b6" }, { name: "İçerik", color: "#a855f7" },
+    { name: "Kişisel", color: "#34d399" },
+  ];
+  const SPARE_COLORS = ["#f59e0b", "#fb7185", "#8b5cf6", "#14b8a6", "#64748b", "#ec4899", "#84cc16", "#0ea5e9"];
+  let categories = (() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(CAT_KEY));
+      if (Array.isArray(raw) && raw.every((c) => c && typeof c.name === "string")) return raw;
+    } catch (_) { /* yok say */ }
+    return DEFAULT_CATS.map((c) => ({ ...c }));
+  })();
+  const saveCats = () => { try { localStorage.setItem(CAT_KEY, JSON.stringify(categories)); } catch (_) { /* yok say */ } };
+  const findCat = (name) => categories.find((c) => norm(c.name) === norm(name || ""));
+  const catColor = (name) => (findCat(name) || {}).color || "#8487b3";
+  function ensureCat(name) {
+    const hit = findCat(name);
+    if (hit) return hit.name;
+    const used = new Set(categories.map((c) => c.color));
+    const color = SPARE_COLORS.find((c) => !used.has(c)) || SPARE_COLORS[categories.length % SPARE_COLORS.length];
+    categories.push({ name, color });
+    saveCats();
+    return name;
+  }
+
+  /* ---------- Hızlı ekleme: "yarın 14:00 rapor gönder !yüksek #iş" ---------- */
+  const MONTHS = ["ocak", "şubat", "mart", "nisan", "mayıs", "haziran", "temmuz", "ağustos", "eylül", "ekim", "kasım", "aralık"];
+  const WEEKDAYS = ["pazar", "pazartesi", "salı", "çarşamba", "perşembe", "cuma", "cumartesi"];
+  const WD_RE = [...WEEKDAYS].sort((a, b) => b.length - a.length).join("|"); // "pazartesi", "pazar"dan önce denenmeli
+  const PRIO_WORDS = { "yüksek": "high", "y": "high", "acil": "high", "1": "high", "orta": "medium", "o": "medium", "2": "medium", "düşük": "low", "d": "low", "3": "low" };
+  const W = "[a-zçğıöşüâîû]"; // Türkçe harf
+  const SUFFIX = `(?:'?${W}*)`; // 14:00'te, cuma'ya gibi ekler
+  function parseQuick(text) {
+    let rest = " " + text + " ";
+    const out = {};
+    // Her kalıptan yalnızca bir eşleşme alınır: sondan başa ilk geçerli olan (tarih/saat genelde sonda yazılır)
+    const take = (re, fn) => {
+      const all = [...rest.matchAll(re)];
+      for (let i = all.length - 1; i >= 0; i--) {
+        const m = all[i];
+        if (fn(...m) === false) continue;
+        rest = rest.slice(0, m.index) + " " + rest.slice(m.index + m[0].length);
+        return;
+      }
+    };
+    const lc = (x) => x.toLocaleLowerCase("tr");
+    const base = () => { const d = new Date(); d.setHours(12, 0, 0, 0); return d; };
+
+    take(new RegExp(`\\s!(${W}+|[123])(?=\\s)`, "giu"), (m, w) => {
+      const p = PRIO_WORDS[lc(w)]; if (!p) return false; out.priority = p;
+    });
+    take(/\s#([\p{L}\p{N}_-]{1,24})(?=\s)/gu, (m, w) => {
+      const hit = findCat(w);
+      out.category = hit ? hit.name : w.charAt(0).toLocaleUpperCase("tr") + w.slice(1);
+      out.newCategory = !hit;
+    });
+    take(new RegExp(`\\s(her\\s?gün|hafta\\s?içi|her\\s?hafta|her\\s?ay)(?=\\s)`, "giu"), (m, w) => {
+      const k = lc(w).replace(/\s/g, "");
+      out.repeat = { "hergün": "daily", "haftaiçi": "weekdays", "herhafta": "weekly", "heray": "monthly" }[k];
+    });
+    take(new RegExp(`\\sher\\s(${WD_RE})${SUFFIX}(?=\\s)`, "giu"), (m, w) => {
+      const wd = WEEKDAYS.indexOf(lc(w)), d = base();
+      while (d.getDay() !== wd) d.setDate(d.getDate() + 1);
+      out.repeat = "weekly"; out.due = ymd(d);
+    });
+    // Saat: 14:00, 9:30, saat 14, saat 9.30
+    take(new RegExp(`\\s(?:saat\\s)?([01]?\\d|2[0-3]):([0-5]\\d)${SUFFIX}(?=\\s)`, "giu"), (m, h, mi) => {
+      out.time = `${h.padStart(2, "0")}:${mi}`;
+    });
+    take(new RegExp(`\\ssaat\\s([01]?\\d|2[0-3])(?:[.]([0-5]\\d))?${SUFFIX}(?=\\s)`, "giu"), (m, h, mi) => {
+      out.time = `${h.padStart(2, "0")}:${mi || "00"}`;
+    });
+    if (!out.due) {
+      // Göreli günler
+      take(new RegExp(`\\s(bugün|bu\\sakşam|yarın|öbür\\sgün|haftaya)${SUFFIX}(?=\\s)`, "giu"), (m, w) => {
+        const k = lc(w).replace(/\s/g, ""), d = base();
+        d.setDate(d.getDate() + ({ "bugün": 0, "buakşam": 0, "yarın": 1, "öbürgün": 2, "haftaya": 7 }[k]));
+        out.due = ymd(d);
+        if (k === "buakşam" && !out.time) out.time = "19:00";
+      });
+    }
+    if (!out.due) {
+      take(/\s(\d{1,2})\sgün\ssonra(?=\s)/giu, (m, n) => { const d = base(); d.setDate(d.getDate() + +n); out.due = ymd(d); });
+    }
+    if (!out.due) {
+      // 3 aralık, 3 Aralık 2026
+      take(new RegExp(`\\s(\\d{1,2})\\s(${MONTHS.join("|")})(?:\\s(\\d{4}))?${SUFFIX}(?=\\s)`, "giu"), (m, dd, mm, yy) => {
+        const mo = MONTHS.indexOf(lc(mm));
+        const d = new Date(yy ? +yy : new Date().getFullYear(), mo, +dd, 12);
+        if (d.getMonth() !== mo) return false;
+        if (!yy && ymd(d) < isoDay(0)) d.setFullYear(d.getFullYear() + 1);
+        out.due = ymd(d);
+      });
+    }
+    if (!out.due) {
+      // 12.12, 3/1, 12.12.2026
+      take(/\s(\d{1,2})[./](\d{2}|\d{1,2}(?=[./]\d{4}))(?:[./](\d{4}))?(?=\s)/gu, (m, dd, mm, yy) => {
+        if (+mm < 1 || +mm > 12) return false;
+        const d = new Date(yy ? +yy : new Date().getFullYear(), +mm - 1, +dd, 12);
+        if (d.getMonth() !== +mm - 1) return false;
+        if (!yy && ymd(d) < isoDay(0)) d.setFullYear(d.getFullYear() + 1);
+        out.due = ymd(d);
+      });
+    }
+    if (!out.due) {
+      take(new RegExp(`\\s(${WD_RE})(?:\\s(?:günü|akşamı|sabahı))?${SUFFIX}(?=\\s)`, "giu"), (m, w) => {
+        const wd = WEEKDAYS.indexOf(lc(w)), d = base();
+        if (wd < 0) return false;
+        while (d.getDay() !== wd) d.setDate(d.getDate() + 1);
+        out.due = ymd(d);
+      });
+    }
+    if (out.time && !out.due) out.due = isoDay(0);
+    const title = rest.replace(/\s+/g, " ").trim();
+    out.title = title || text.trim();
+    out.found = ["priority", "category", "repeat", "time", "due"].some((k) => out[k]);
+    return out;
   }
 
   const params = new URLSearchParams(location.search);
@@ -148,12 +277,14 @@
   };
 
   /* ---------- Durum ---------- */
-  const SORT_KEY = "taskflow.sort";
-  let storedSort = null;
-  try { storedSort = localStorage.getItem(SORT_KEY); } catch (_) { /* yok say */ }
+  const SORT_KEY = "taskflow.sort", STATUS_KEY = "taskflow.status";
+  const STATUSES = ["today", "all", "pending", "completed"];
+  let storedSort = null, storedStatus = null;
+  try { storedSort = localStorage.getItem(SORT_KEY); storedStatus = localStorage.getItem(STATUS_KEY); } catch (_) { /* yok say */ }
   const state = {
     tasks: load(),
-    status: ["all", "pending", "completed"].includes(params.get("status")) ? params.get("status") : "all",
+    status: STATUSES.includes(params.get("status")) ? params.get("status") : STATUSES.includes(storedStatus) ? storedStatus : "all",
+    cat: null,
     prio: ["all", "high", "medium", "low"].includes(params.get("prio")) ? params.get("prio") : "all",
     query: params.get("q") || "",
     newPrio: "medium",
@@ -165,6 +296,9 @@
     if (!Array.isArray(t.subtasks)) t.subtasks = [];
     if (t.repeat === undefined) t.repeat = null;
     if (typeof t.order !== "number") t.order = i;
+    if (t.time === undefined) t.time = null;
+    if (t.remind === undefined) t.remind = null;
+    if (t.category) ensureCat(t.category);
   });
   save();
   let fresh = new Set(state.tasks.map((t) => t.id)); // ilk yüklemede hepsi animasyonla girer
@@ -177,7 +311,8 @@
   $("#greeting").innerHTML = `${greet}, <span class="grad-text">bugün neler başaracağız?</span>`;
   $("#dueInput").value = isoDay(0);
 
-  const dueBadge = (due, done) => {
+  const fmtRemind = (m) => (m === 0 ? "zamanında" : m >= 1440 ? `${m / 1440} gün önce` : m >= 60 ? `${m / 60} saat önce` : `${m} dk önce`);
+  const dueBadge = (due, done, t = {}) => {
     if (!due) return "";
     const diff = Math.round((new Date(due + "T12:00:00") - new Date(isoDay(0) + "T12:00:00")) / 864e5);
     const pretty = new Date(due + "T12:00:00").toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
@@ -185,14 +320,18 @@
     if (diff === 0) { cls = "today"; label = "Bugün"; }
     else if (diff === 1) label = "Yarın";
     else if (diff < 0 && !done) { cls = "overdue"; label = `Gecikti · ${pretty}`; }
-    return `<span class="badge badge-date ${cls}">${ICONS.calendar}${label}</span>`;
+    if (t.time) label += ` · ${t.time}`;
+    const bell = t.time && t.remind != null && !done ? `<i class="bell" title="Hatırlatma: ${fmtRemind(t.remind)}">${ICONS.bell}</i>` : "";
+    return `<span class="badge badge-date ${cls}">${ICONS.calendar}${label}${bell}</span>`;
   };
 
   /* ---------- Render ---------- */
   // Türkçe büyük/küçük harf + ı/i farkını yok sayan arama normalizasyonu
-  const norm = (s) => s.toLocaleLowerCase("tr").replace(/ı/g, "i");
+  const isTodayish = (t) => !t.done && t.due && t.due <= isoDay(0);
+  const doneToday = (t) => t.done && t.completedAt && ymd(new Date(t.completedAt)) === isoDay(0);
   const matches = (t) =>
     (state.prio === "all" || t.priority === state.prio) &&
+    (!state.cat || norm(t.category || "") === norm(state.cat)) &&
     (!state.query || norm(t.title + " " + t.category).includes(norm(state.query)));
 
   // Odak süresi (dakika) — views.js doldurur
@@ -222,6 +361,20 @@
         <label class="meta-field sm" title="Bitiş tarihi">${ICONS.calendar}
           <input type="date" data-change="due" value="${t.due || ""}" aria-label="Bitiş tarihi" />
         </label>
+        <label class="meta-field sm" title="Saat">${ICONS.clock}
+          <input type="time" data-change="time" value="${t.time || ""}" aria-label="Saat" />
+        </label>
+        <label class="meta-field sm" title="Hatırlatma">${ICONS.bell}
+          <select data-change="remind" aria-label="Hatırlatma">
+            <option value="">Hatırlatma yok</option>
+            ${[0, 5, 15, 30, 60, 1440].map((m) => `<option value="${m}" ${t.remind === m ? "selected" : ""}>${m === 0 ? "Zamanında" : fmtRemind(m)}</option>`).join("")}
+          </select>
+        </label>
+        <label class="meta-field sm" title="Kategori">${ICONS.tag}
+          <select data-change="category" aria-label="Kategori">
+            ${categories.map((c) => `<option ${norm(c.name) === norm(t.category || "") ? "selected" : ""}>${esc(c.name)}</option>`).join("")}
+          </select>
+        </label>
         <button type="button" class="btn-ghost btn-xs detail-del" data-action="delete">${ICONS.trash}Görevi sil</button>
       </div>
     </div>`;
@@ -237,8 +390,8 @@
         <div class="task-title">${esc(t.title)}</div>
         <div class="task-meta">
           <span class="badge badge-prio">${ICONS.flag}${PRIO_LABEL[t.priority]}</span>
-          <span class="badge badge-cat">${ICONS.tag}${esc(t.category)}</span>
-          ${dueBadge(t.due, t.done)}
+          <span class="badge badge-cat" style="--cc:${catColor(t.category)}">${ICONS.tag}${esc(t.category)}</span>
+          ${dueBadge(t.due, t.done, t)}
           ${t.repeat ? `<span class="badge badge-repeat">${ICONS.repeat}${REPEAT_LABEL[t.repeat]}</span>` : ""}
           ${st ? `<button type="button" class="badge badge-sub ${sd === st ? "all" : ""}" data-action="expand" title="Alt görevler">${ICONS.checkSquare}${sd}/${st}</button>` : ""}
           ${fm ? `<span class="badge badge-focus" title="Bu görevde odaklanılan süre">${ICONS.timer}${fmtMin(fm)}</span>` : ""}
@@ -255,16 +408,20 @@
   };
 
   const emptyHTML = (kind) => {
-    const filtered = state.prio !== "all" || state.query;
+    const filtered = state.prio !== "all" || state.query || state.cat;
     const txt = filtered
       ? ["Eşleşen görev yok", "Filtreleri değiştirerek tekrar dene."]
+      : state.status === "today"
+        ? kind === "pending" ? ["Bugün için görev kalmadı 🎉", "Bugüne ya da geçmişe tarihli bekleyen görev yok."] : ["Bugün henüz bir şey tamamlanmadı", "İlk görevi bitirdiğinde burada görünecek."]
       : kind === "pending"
         ? ["Tüm görevler tamam! 🎉", "Yeni bir hedef ekleyerek ivmeni koru."]
         : ["Henüz tamamlanan görev yok", "Bir görevi işaretlediğinde burada görünecek."];
     return `<li class="empty"><div class="empty-icon">${kind === "pending" && !filtered ? ICONS.party : ICONS.inbox}</div><strong>${txt[0]}</strong><p>${txt[1]}</p></li>`;
   };
 
-  const smartCmp = (a, b) => PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority] || (a.due || "9").localeCompare(b.due || "9");
+  const smartCmp = (a, b) => PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority] || (a.due || "9").localeCompare(b.due || "9") || (a.time || "99").localeCompare(b.time || "99");
+  // Bugün görünümü: önce gecikenler, sonra saate göre, sonra öncelik
+  const todayCmp = (a, b) => (a.due < isoDay(0) ? 0 : 1) - (b.due < isoDay(0) ? 0 : 1) || (a.time || "99").localeCompare(b.time || "99") || PRIO_ORDER[a.priority] - PRIO_ORDER[b.priority];
   const sortTasks = (arr, done) =>
     arr.sort((a, b) => done
       ? (b.completedAt || 0) - (a.completedAt || 0)
@@ -272,8 +429,15 @@
   const minOrder = () => Math.min(0, ...state.tasks.map((t) => t.order)) - 1;
 
   function render() {
-    const pending = sortTasks(state.tasks.filter((t) => !t.done && matches(t)), false);
-    const completed = sortTasks(state.tasks.filter((t) => t.done && matches(t)), true);
+    syncCats();
+    const today = state.status === "today";
+    const pending = today
+      ? state.tasks.filter((t) => isTodayish(t) && matches(t)).sort(state.sort === "manual" ? (a, b) => a.order - b.order : todayCmp)
+      : sortTasks(state.tasks.filter((t) => !t.done && matches(t)), false);
+    const completed = sortTasks(state.tasks.filter((t) => t.done && matches(t) && (!today || doneToday(t))), true);
+    const overdue = today ? pending.filter((t) => t.due < isoDay(0)).length : 0;
+    $("#pendingTitle").textContent = today ? (overdue ? `Bugün · ${overdue} geciken` : "Bugün yapılacaklar") : "Bekleyen görevler";
+    $("#completedTitle").textContent = today ? "Bugün tamamlananlar" : "Tamamlanan görevler";
 
     $("#pendingList").innerHTML = pending.length ? pending.map(taskHTML).join("") : emptyHTML("pending");
     $("#completedList").innerHTML = completed.length ? completed.map(taskHTML).join("") : emptyHTML("completed");
@@ -282,11 +446,12 @@
 
     $("#pendingBlock").hidden = state.status === "completed";
     $("#completedBlock").hidden = state.status === "pending";
-    $(".lists").classList.toggle("single", state.status !== "all");
+    $(".lists").classList.toggle("single", state.status === "pending" || state.status === "completed");
     $("#clearDone").hidden = !state.tasks.some((t) => t.done);
 
     renderStats();
     renderFilters();
+    renderSideCats();
     fresh = new Set();
     document.dispatchEvent(new CustomEvent("taskflow:tasks"));
   }
@@ -329,7 +494,7 @@
       `Hadi başlayalım — ${pending} görev sırada.`;
 
     const counts = {
-      all: total, pending, completed: done,
+      all: total, pending, completed: done, today: state.tasks.filter(isTodayish).length,
       high: state.tasks.filter((t) => t.priority === "high").length,
       medium: state.tasks.filter((t) => t.priority === "medium").length,
       low: state.tasks.filter((t) => t.priority === "low").length,
@@ -337,10 +502,28 @@
     $$("[data-count]").forEach((el) => { el.textContent = counts[el.dataset.count]; });
   }
 
+  // Görevlerde geçen ama listede olmayan kategorileri ekle (notlardan / takvimden gelenler)
+  function syncCats() { state.tasks.forEach((t) => { if (t.category && !findCat(t.category)) ensureCat(t.category); }); }
+  function renderCatSelect() {
+    const sel = $("#categoryInput"), cur = sel.value;
+    sel.innerHTML = categories.map((c) => `<option>${esc(c.name)}</option>`).join("") + `<option value="__new">＋ Yeni kategori…</option>`;
+    sel.value = findCat(cur) ? findCat(cur).name : categories[0] ? categories[0].name : "__new";
+  }
+  function renderSideCats() {
+    const box = $("#sideCats");
+    if (!box) return;
+    box.innerHTML = categories.map((c) => {
+      const n = state.tasks.filter((t) => !t.done && norm(t.category || "") === norm(c.name)).length;
+      const on = state.cat && norm(state.cat) === norm(c.name);
+      return `<button class="nav-item ${on ? "active" : ""}" data-cat="${esc(c.name)}"><i class="dot" style="background:${c.color}"></i>${esc(c.name)}<b>${n}</b></button>`;
+    }).join("");
+  }
+
   function renderFilters() {
     $$(".nav-item[data-status]").forEach((b) => b.classList.toggle("active", b.dataset.status === state.status));
     $$(".nav-item[data-prio]").forEach((b) => b.classList.toggle("active", b.dataset.prio === state.prio));
     $$("#segmented button").forEach((b) => b.classList.toggle("active", b.dataset.status === state.status));
+    try { localStorage.setItem(STATUS_KEY, state.status); } catch (_) { /* yok say */ }
     $$("#prioChips button").forEach((b) => b.classList.toggle("active", b.dataset.prio === state.prio));
     const sortSel = $("#taskSort");
     if (sortSel && sortSel.value !== state.sort) sortSel.value = state.sort;
@@ -360,7 +543,7 @@
   window.addEventListener("resize", moveGlider);
 
   /* ---------- Bildirimler ---------- */
-  function toast(message, { icon = "check", action } = {}) {
+  function toast(message, { icon = "check", action, duration } = {}) {
     const el = document.createElement("div");
     el.className = "toast";
     el.innerHTML = `<span class="t-icon">${ICONS[icon]}</span><span>${esc(message)}</span>`;
@@ -372,22 +555,88 @@
     }
     $("#toasts").appendChild(el);
     const dismiss = () => { el.classList.add("out"); setTimeout(() => el.remove(), 350); };
-    setTimeout(dismiss, action ? 5000 : 2600);
+    setTimeout(dismiss, duration || (action ? 5000 : 2600));
   }
 
-  /* ---------- Eylemler ---------- */
-  function addTask(title) {
-    const t = {
-      id: uid(), title, priority: state.newPrio, category: $("#categoryInput").value,
-      due: $("#dueInput").value || null, done: false, createdAt: Date.now(), completedAt: null,
-      subtasks: [], repeat: $("#repeatInput").value || null, order: minOrder(),
+  /* ---------- Geri alma (Ctrl+Z) ---------- */
+  // Her kayıt ya bir anlık görüntü (görevler + kategoriler) ya da özel bir geri alma fonksiyonu taşır.
+  const history = [];
+  const snapshot = () => ({ tasks: JSON.parse(JSON.stringify(state.tasks)), cats: JSON.parse(JSON.stringify(categories)) });
+  function checkpoint(label, undoFn) {
+    history.push(undoFn ? { label, undo: undoFn } : { label, snap: snapshot() });
+    if (history.length > 40) history.shift();
+  }
+  function undo() {
+    const h = history.pop();
+    if (!h) { toast("Geri alınacak bir işlem yok", { icon: "undo" }); return false; }
+    if (h.undo) h.undo();
+    else {
+      state.tasks = h.snap.tasks; categories = h.snap.cats;
+      saveCats(); renderCatSelect();
+      state.tasks.forEach((t) => fresh.add(t.id));
+    }
+    save(); render();
+    toast(`Geri alındı: ${h.label}`, { icon: "undo" });
+    return true;
+  }
+  // Son kaydı geri alan toast düğmesi (başka işlem araya girdiyse o kaydı bulup geri alır)
+  const undoAction = (label) => {
+    const entry = history[history.length - 1];
+    return {
+      label: "Geri al",
+      run: () => {
+        const i = history.lastIndexOf(entry);
+        if (i < 0) return;
+        if (i === history.length - 1) { undo(); return; }
+        // Araya başka işlemler girdi: yalnızca bu işlemi tersine çevir (özel fonksiyon varsa)
+        history.splice(i, 1);
+        if (entry.undo) { entry.undo(); save(); render(); toast(`Geri alındı: ${label}`, { icon: "undo" }); }
+        else { state.tasks = entry.snap.tasks; categories = entry.snap.cats; saveCats(); renderCatSelect(); save(); render(); toast(`Geri alındı: ${label}`, { icon: "undo" }); }
+      },
     };
+  };
+  document.addEventListener("keydown", (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "z") return;
+    if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable='true']")) return; // yazı alanlarında tarayıcının kendi geri alması
+    const busy = ["#editor", "#focus", "#confirm", "#catDlg"].some((id) => { const el = $(id); return el && !el.hidden; });
+    if (busy) return;
+    const tasksView = !$("#viewTasks").hidden;
+    if (!tasksView && !history.length) return;
+    e.preventDefault();
+    undo();
+  });
+
+  /* ---------- Eylemler ---------- */
+  function addTask(raw) {
+    const q = parseQuick(raw);
+    let category = $("#categoryInput").value;
+    if (category === "__new") category = categories[0] ? categories[0].name : "Genel";
+    if (q.category) category = ensureCat(q.category);
+    const time = q.time || $("#timeInput").value || null;
+    const remindVal = $("#remindInput").value;
+    const t = {
+      id: uid(), title: q.title, priority: q.priority || state.newPrio, category,
+      due: q.due || $("#dueInput").value || (time ? isoDay(0) : null), time,
+      remind: time && remindVal !== "" ? +remindVal : null,
+      done: false, createdAt: Date.now(), completedAt: null,
+      subtasks: [], repeat: q.repeat || $("#repeatInput").value || null, order: minOrder(),
+    };
+    checkpoint("görev ekleme");
     state.tasks.unshift(t);
     fresh.add(t.id);
     if (state.status === "completed") state.status = "all";
-    save(); render();
-    toast("Görev eklendi", { icon: "plus" });
+    save(); renderCatSelect(); render();
+    if (t.remind != null) askNotifyPermission();
+    const visible = state.status !== "today" || isTodayish(t);
+    const when = t.due ? ` · ${dueText(t)}` : "";
+    toast(visible ? `Görev eklendi${when}` : `Görev eklendi${when} — Bugün görünümünde değil`, { icon: "plus", action: undoAction("görev ekleme") });
+    if (q.newCategory) toast(`Yeni kategori: ${category}`, { icon: "tag" });
   }
+  const dueText = (t) => {
+    const diff = Math.round((new Date(t.due + "T12:00:00") - new Date(isoDay(0) + "T12:00:00")) / 864e5);
+    const d = diff === 0 ? "bugün" : diff === 1 ? "yarın" : new Date(t.due + "T12:00:00").toLocaleDateString("tr-TR", { day: "numeric", month: "long", weekday: "short" });
+    return t.time ? `${d} ${t.time}` : d;
+  };
 
   function leave(li, then) {
     li.classList.add("leaving");
@@ -401,7 +650,7 @@
     let spawned = null;
     if (done && t.repeat) {
       spawned = {
-        ...t, id: uid(), done: false, completedAt: null, createdAt: Date.now(), nextId: null,
+        ...t, id: uid(), done: false, completedAt: null, createdAt: Date.now(), nextId: null, notified: null, snooze: null,
         due: nextDue(t.due, t.repeat), subtasks: t.subtasks.map((s) => ({ ...s, id: uid(), done: false })),
       };
       t.nextId = spawned.id;
@@ -426,15 +675,21 @@
     li.querySelector(".check").classList.add("pop");
     renderStats();
     setTimeout(() => leave(li, () => { fresh.add(id); render(); }), 380);
+    const label = t.done ? "tamamlama" : "tamamlanmadı işareti";
+    checkpoint(label, () => {
+      const cur = state.tasks.find((x) => x.id === id); // anlık görüntü geri yüklendiyse güncel nesneyi bul
+      if (cur) { setDone(cur, !cur.done); fresh.add(id); }
+    });
     if (spawned) {
       const d = new Date(spawned.due + "T12:00:00").toLocaleDateString("tr-TR", { day: "numeric", month: "long" });
-      toast(`Tamamlandı · sonraki tekrar ${d}`, { icon: "repeat" });
-    } else if (t.done) toast("Harika! Görev tamamlandı", { icon: "check" });
+      toast(`Tamamlandı · sonraki tekrar ${d}`, { icon: "repeat", action: undoAction(label) });
+    } else if (t.done) toast("Harika! Görev tamamlandı", { icon: "check", action: undoAction(label) });
   }
 
-  function updateTask(id, patch) {
+  function updateTask(id, patch, label = "düzenleme") {
     const t = state.tasks.find((x) => x.id === id);
     if (!t) return;
+    checkpoint(label);
     Object.assign(t, patch);
     save(); render();
   }
@@ -454,6 +709,7 @@
 
   /* ---------- Sürükle-bırak sıralama (fare + dokunmatik) ---------- */
   function persistDomOrder() {
+    checkpoint("sıralama");
     const ids = $$("#pendingList > .task").map((li) => li.dataset.id);
     const visible = new Set(ids);
     const all = state.tasks.filter((t) => !t.done).sort((a, b) => (state.sort === "manual" ? a.order - b.order : smartCmp(a, b)));
@@ -519,14 +775,13 @@
   function deleteTask(id, li) {
     const idx = state.tasks.findIndex((x) => x.id === id);
     if (idx < 0) return;
+    checkpoint("silme");
     const [removed] = state.tasks.splice(idx, 1);
+    fresh.add(removed.id);
     save();
     renderStats();
     leave(li, render);
-    toast("Görev silindi", {
-      icon: "trash",
-      action: { label: "Geri al", run: () => { state.tasks.splice(idx, 0, removed); fresh.add(removed.id); save(); render(); } },
-    });
+    toast("Görev silindi", { icon: "trash", action: undoAction("silme") });
   }
 
   /* ---------- Olaylar ---------- */
@@ -561,9 +816,15 @@
         if (state.expanded.has(id)) { const inp = $(`.task[data-id="${id}"] .sub-add input`); if (inp && !t.subtasks.length) inp.focus(); }
       } else if (a === "focus") document.dispatchEvent(new CustomEvent("taskflow:focus", { detail: { taskId: id } }));
       else if (a === "sub-toggle" && t) toggleSub(t, btn.dataset.sub);
-      else if (a === "sub-del" && t) { t.subtasks = t.subtasks.filter((s) => s.id !== btn.dataset.sub); save(); render(); }
+      else if (a === "sub-del" && t) {
+        checkpoint("alt görev silme");
+        t.subtasks = t.subtasks.filter((s) => s.id !== btn.dataset.sub); save(); render();
+        toast("Alt görev silindi", { icon: "trash", action: undoAction("alt görev silme") });
+      }
       return;
     }
+    const c = e.target.closest("#sideCats [data-cat]");
+    if (c) { state.cat = state.cat && norm(state.cat) === norm(c.dataset.cat) ? null : c.dataset.cat; render(); return; }
     const s = e.target.closest("[data-status]");
     if (s && (s.classList.contains("nav-item") || s.closest("#segmented"))) { state.status = s.dataset.status; render(); return; }
     const p = e.target.closest("[data-prio]");
@@ -591,10 +852,27 @@
     if (!el || !el.closest(".task")) return;
     const id = el.closest(".task").dataset.id;
     if (el.dataset.change === "repeat") {
-      updateTask(id, { repeat: el.value || null });
+      updateTask(id, { repeat: el.value || null }, "tekrar değişikliği");
       if (el.value) toast(`Tekrar: ${REPEAT_LABEL[el.value]}`, { icon: "repeat" });
     }
-    if (el.dataset.change === "due") updateTask(id, { due: el.value || null });
+    if (el.dataset.change === "due") updateTask(id, { due: el.value || null }, "tarih değişikliği");
+    if (el.dataset.change === "time") {
+      const t = state.tasks.find((x) => x.id === id);
+      const patch = { time: el.value || null };
+      if (el.value && t && !t.due) patch.due = isoDay(0);
+      if (el.value && t && t.remind == null) patch.remind = 0; // saat girildiyse varsayılan: zamanında hatırlat
+      updateTask(id, patch, "saat değişikliği");
+      if (patch.remind != null || (t && t.remind != null)) askNotifyPermission();
+    }
+    if (el.dataset.change === "remind") {
+      updateTask(id, { remind: el.value === "" ? null : +el.value, notified: null, snooze: null }, "hatırlatma değişikliği");
+      if (el.value !== "") {
+        askNotifyPermission();
+        const t = state.tasks.find((x) => x.id === id);
+        if (t && !t.time) toast("Hatırlatma için bir saat de seç", { icon: "clock" });
+      }
+    }
+    if (el.dataset.change === "category") updateTask(id, { category: el.value }, "kategori değişikliği");
   });
 
   $("#taskSort").value = state.sort;
@@ -614,16 +892,178 @@
   $("#clearDone").addEventListener("click", () => {
     const n = state.tasks.filter((t) => t.done).length;
     if (!n) return;
-    const before = state.tasks.slice();
+    checkpoint("temizleme");
     state.tasks = state.tasks.filter((t) => !t.done);
     save(); render();
-    toast(`${n} tamamlanan görev temizlendi`, {
-      icon: "trash",
-      action: { label: "Geri al", run: () => { state.tasks = before; save(); render(); } },
-    });
+    toast(`${n} tamamlanan görev temizlendi`, { icon: "trash", action: undoAction("temizleme") });
   });
 
+  /* ---------- Hızlı ekleme önizlemesi ---------- */
+  const qp = $("#quickPreview");
+  function renderQuickPreview() {
+    const v = $("#taskInput").value.trim();
+    const q = v ? parseQuick(v) : { found: false };
+    if (!q.found) { qp.hidden = true; qp.innerHTML = ""; return; }
+    const chips = [];
+    if (q.due) chips.push(`${ICONS.calendar}${esc(dueText({ due: q.due, time: q.time }))}`);
+    else if (q.time) chips.push(`${ICONS.clock}${q.time}`);
+    if (q.priority) chips.push(`<i class="dot dot-${q.priority}"></i>${PRIO_LABEL[q.priority]}`);
+    if (q.category) chips.push(`<i class="dot" style="background:${q.newCategory ? "#8487b3" : catColor(q.category)}"></i>${esc(q.category)}${q.newCategory ? " (yeni)" : ""}`);
+    if (q.repeat) chips.push(`${ICONS.repeat}${REPEAT_LABEL[q.repeat]}`);
+    qp.innerHTML = `<span class="qp-label">${ICONS.sparkles}Algılandı:</span>${chips.map((c) => `<span class="qp-chip">${c}</span>`).join("")}<span class="qp-title">“${esc(q.title)}”</span>`;
+    qp.hidden = false;
+  }
+  $("#taskInput").addEventListener("input", renderQuickPreview);
+  $("#composer").addEventListener("submit", () => setTimeout(renderQuickPreview, 0));
+
+  /* ---------- Hatırlatıcılar ---------- */
+  function askNotifyPermission() {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "default") {
+      Notification.requestPermission().then((p) => {
+        if (p === "denied") toast("Bildirim izni verilmedi — hatırlatmalar yalnızca uygulama içinde görünecek", { icon: "bell" });
+      }).catch(() => {});
+    }
+  }
+  function sysNotify(title, body, tag) {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const opts = { body, icon: "icons/icon.svg", badge: "icons/icon.svg", tag, renotify: true };
+    try {
+      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.ready.then((r) => r.showNotification(title, opts)).catch(() => {});
+      } else new Notification(title, opts);
+    } catch (_) { /* yok say */ }
+  }
+  const reminderKey = (t) => `${t.due}T${t.time}|${t.remind}`;
+  const fireTime = (t) => new Date(`${t.due}T${t.time}:00`).getTime() - t.remind * 60e3;
+  function fireReminder(t) {
+    const left = Math.round((new Date(`${t.due}T${t.time}:00`).getTime() - Date.now()) / 60e3);
+    const body = left > 0 ? `${left >= 60 ? fmtMin(left) : left + " dk"} sonra · ${t.time}` : `Zamanı geldi · ${t.time}`;
+    sysNotify(`⏰ ${t.title}`, body, "taskflow-" + t.id);
+    toast(`Hatırlatma: ${t.title} — ${body}`, {
+      icon: "bell", duration: 15000,
+      action: { label: "10 dk ertele", icon: "clock", run: () => { t.snooze = Date.now() + 10 * 60e3; save(); toast("10 dakika sonra tekrar hatırlatılacak", { icon: "clock" }); } },
+    });
+  }
+  function checkReminders() {
+    const now = Date.now();
+    let changed = false;
+    state.tasks.forEach((t) => {
+      if (t.done || !t.due || !t.time || t.remind == null) return;
+      if (t.snooze && now >= t.snooze) { t.snooze = null; changed = true; fireReminder(t); return; }
+      const key = reminderKey(t);
+      if (t.notified === key) return;
+      const at = fireTime(t);
+      if (now < at) return;
+      t.notified = key; changed = true;
+      if (now - at < 6 * 36e5) fireReminder(t); // 6 saatten eski kaçırılmış hatırlatmaları sessizce geç
+    });
+    if (changed) save();
+  }
+  setInterval(checkReminders, 20e3);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) checkReminders(); });
+  setTimeout(checkReminders, 1500);
+
+  /* ---------- Tema (sistem / açık / koyu) ---------- */
+  const THEME_KEY = "taskflow.theme";
+  const THEME_LABEL = { system: "Sistem", light: "Açık", dark: "Koyu" };
+  let themeMode = "system";
+  try { themeMode = localStorage.getItem(THEME_KEY) || "system"; } catch (_) { /* yok say */ }
+  const mql = window.matchMedia ? matchMedia("(prefers-color-scheme: light)") : null;
+  function applyTheme() {
+    const light = themeMode === "light" || (themeMode === "system" && mql && mql.matches);
+    document.documentElement.setAttribute("data-theme", light ? "light" : "dark");
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", light ? "#f4f5fb" : "#0b0b1a");
+    const icon = themeMode === "system" ? ICONS.themeAuto : themeMode === "light" ? ICONS.sun : ICONS.moon;
+    $$("[data-theme-toggle]").forEach((b) => {
+      b.querySelector(".theme-ic").innerHTML = icon;
+      b.title = `Tema: ${THEME_LABEL[themeMode]} (değiştirmek için tıkla)`;
+      const l = b.querySelector(".theme-lbl"); if (l) l.textContent = THEME_LABEL[themeMode];
+    });
+  }
+  if (mql) (mql.addEventListener ? mql.addEventListener("change", applyTheme) : mql.addListener(applyTheme));
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("[data-theme-toggle]")) return;
+    themeMode = { system: "light", light: "dark", dark: "system" }[themeMode] || "system";
+    try { localStorage.setItem(THEME_KEY, themeMode); } catch (_) { /* yok say */ }
+    applyTheme();
+    toast(`Tema: ${THEME_LABEL[themeMode]}${themeMode === "system" ? " (cihaz ayarını izler)" : ""}`, { icon: themeMode === "dark" ? "moon" : themeMode === "light" ? "sun" : "themeAuto" });
+  });
+  applyTheme();
+
+  /* ---------- Kategori yöneticisi ---------- */
+  const catDlg = $("#catDlg");
+  let catReturnFocus = null;
+  function renderCatRows() {
+    $("#catRows").innerHTML = categories.map((c, i) => {
+      const n = state.tasks.filter((t) => norm(t.category || "") === norm(c.name)).length;
+      return `<li data-i="${i}">
+        <input type="color" value="${c.color}" data-cat-color aria-label="${esc(c.name)} rengi" />
+        <input type="text" value="${esc(c.name)}" maxlength="24" data-cat-name aria-label="Kategori adı" />
+        <span class="cat-n" title="Bu kategorideki görev sayısı">${n}</span>
+        <button type="button" class="ed-btn danger" data-cat-del aria-label="${esc(c.name)} kategorisini sil" title="Sil">${ICONS.trash}</button>
+      </li>`;
+    }).join("");
+  }
+  function openCats(focusNew) {
+    catReturnFocus = document.activeElement;
+    renderCatRows();
+    catDlg.hidden = false;
+    (focusNew ? $("#catNewName") : $("#catDone")).focus();
+  }
+  function closeCats() {
+    catDlg.hidden = true;
+    renderCatSelect(); render();
+    if (catReturnFocus && catReturnFocus.focus) catReturnFocus.focus();
+  }
+  $("#catManage").addEventListener("click", () => openCats(false));
+  $("#catDone").addEventListener("click", closeCats);
+  catDlg.addEventListener("click", (e) => { if (e.target === catDlg) closeCats(); });
+  catDlg.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); closeCats(); } });
+  $("#catAdd").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = $("#catNewName").value.trim();
+    if (!name) return;
+    if (findCat(name)) { toast(`“${name}” zaten var`, { icon: "tag" }); return; }
+    checkpoint("kategori ekleme");
+    categories.push({ name, color: $("#catNewColor").value });
+    saveCats(); renderCatRows(); renderCatSelect();
+    $("#categoryInput").value = name;
+    $("#catNewName").value = "";
+    $("#catNewColor").value = SPARE_COLORS[categories.length % SPARE_COLORS.length];
+    $("#catNewName").focus();
+  });
+  $("#catRows").addEventListener("change", (e) => {
+    const li = e.target.closest("li"); if (!li) return;
+    const c = categories[+li.dataset.i]; if (!c) return;
+    if (e.target.matches("[data-cat-color]")) { checkpoint("renk değişikliği"); c.color = e.target.value; saveCats(); }
+    if (e.target.matches("[data-cat-name]")) {
+      const name = e.target.value.trim();
+      if (!name || (findCat(name) && findCat(name) !== c)) { e.target.value = c.name; toast(name ? `“${name}” zaten var` : "Ad boş olamaz", { icon: "tag" }); return; }
+      checkpoint("kategori adı değişikliği");
+      state.tasks.forEach((t) => { if (norm(t.category || "") === norm(c.name)) t.category = name; });
+      if (state.cat && norm(state.cat) === norm(c.name)) state.cat = name;
+      c.name = name; saveCats(); save();
+    }
+    render();
+  });
+  $("#catRows").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-cat-del]"); if (!b) return;
+    const c = categories[+b.closest("li").dataset.i]; if (!c) return;
+    if (norm(c.name) === "genel" && state.tasks.some((t) => norm(t.category || "") === "genel")) { toast("“Genel” kategorisinde görev varken silinemez", { icon: "tag" }); return; }
+    checkpoint("kategori silme");
+    const moved = state.tasks.filter((t) => norm(t.category || "") === norm(c.name));
+    categories = categories.filter((x) => x !== c);
+    if (moved.length) { const g = ensureCat("Genel"); moved.forEach((t) => { t.category = g; }); }
+    if (state.cat && norm(state.cat) === norm(c.name)) state.cat = null;
+    saveCats(); save(); renderCatRows(); renderCatSelect(); render();
+    toast(`“${c.name}” silindi${moved.length ? ` · ${moved.length} görev Genel'e taşındı` : ""}`, { icon: "trash", action: undoAction("kategori silme") });
+  });
+  $("#categoryInput").addEventListener("change", (e) => { if (e.target.value === "__new") openCats(true); });
+
   /* ---------- Başlat ---------- */
+  renderCatSelect();
   if (params.get("prio-new") && PRIO_LABEL[params.get("prio-new")]) state.newPrio = params.get("prio-new");
   if (params.get("draft")) $("#taskInput").value = params.get("draft");
   if (params.get("expand") === "first") {
@@ -668,8 +1108,9 @@
       id: uid(), title: x.title, priority: PRIO_LABEL[x.priority] ? x.priority : "medium",
       category: x.category || "Notlar", due: x.due || null, done: false,
       createdAt: Date.now(), completedAt: null, noteId: x.noteId || null,
-      subtasks: [], repeat: null, order: minOrder(),
+      subtasks: [], repeat: null, order: minOrder(), time: null, remind: null,
     }));
+    created.forEach((t) => ensureCat(t.category));
     state.tasks.unshift(...created);
     created.forEach((t) => fresh.add(t.id));
     save(); render();
@@ -678,5 +1119,6 @@
   window.Taskflow = {
     state, render, save, addTasks, toast, esc, uid, ICONS, isoDay, ymd,
     setDone, updateTask, PRIO_LABEL, REPEAT_LABEL, fmtMin, markFresh: (id) => fresh.add(id),
+    catColor, parseQuick, checkpoint, undo, get categories() { return categories; },
   };
 })();

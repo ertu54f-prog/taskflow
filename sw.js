@@ -1,5 +1,5 @@
 // Taskflow service worker — uygulamayı çevrimdışı da çalıştırır.
-const CACHE = "taskflow-v1";
+const CACHE = "taskflow-v2";
 const ASSETS = [
   "./", "index.html", "style.css", "app.js", "notes.js", "views.js",
   "manifest.webmanifest", "icons/icon.svg",

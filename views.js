@@ -118,7 +118,7 @@
   }
   function notify(title, body) {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
-    const opts = { body, icon: "icons/icon-192.png", badge: "icons/icon-192.png", tag: "taskflow-focus" };
+    const opts = { body, icon: "icons/icon.svg", badge: "icons/icon.svg", tag: "taskflow-focus" };
     if (navigator.serviceWorker && navigator.serviceWorker.controller) {
       navigator.serviceWorker.ready.then((r) => r.showNotification(title, opts)).catch(() => {});
     } else { try { new Notification(title, opts); } catch (_) { /* yok say */ } }
@@ -590,7 +590,7 @@
     const catMax = Math.max(1, ...catRows.map((c) => c[1]));
     $("#panelCats").innerHTML = `<header class="panel-head"><h3>Kategoriler</h3><span>Son ${R} gün · tamamlanan</span></header>
       ${catRows.length ? `<ul class="hbars">${catRows.map(([k, v]) => `<li data-tip="${esc(k)}|${v} görev · %${Math.round((v / doneNow) * 100)}">
-        <span class="hb-label">${esc(k)}</span><span class="hb-track"><i style="width:${(v / catMax) * 100}%"></i></span><span class="hb-val">${v}</span></li>`).join("")}</ul>`
+        <span class="hb-label">${esc(k)}</span><span class="hb-track"><i style="width:${(v / catMax) * 100}%;background:${TF.catColor ? TF.catColor(k) : ""}"></i></span><span class="hb-val">${v}</span></li>`).join("")}</ul>`
         : `<p class="panel-empty">Bu aralıkta tamamlanan görev yok.</p>`}`;
 
     // Öngörüler

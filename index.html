@@ -6,6 +6,15 @@
 <meta name="description" content="Taskflow — görevler, notlar, takvim, odak modu ve verimlilik paneli tek bir uygulamada." />
 <title>Taskflow</title>
 <meta name="theme-color" content="#0b0b1a" />
+<script>
+  // Tema, sayfa çizilmeden önce uygulanır (yanıp sönmeyi önler)
+  (function () {
+    var m = "system";
+    try { m = localStorage.getItem("taskflow.theme") || "system"; } catch (_) {}
+    var dark = m === "dark" || (m === "system" && !(window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches));
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  })();
+</script>
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -34,6 +43,7 @@
           <div class="brand-name">Taskflow</div>
           <div class="brand-sub">Productivity Suite</div>
         </div>
+        <button type="button" class="theme-btn" data-theme-toggle aria-label="Temayı değiştir" title="Tema"><span class="theme-ic"></span></button>
       </div>
 
       <nav class="nav">
@@ -46,6 +56,7 @@
 
         <div class="nav-group" data-for="tasks">
           <div class="nav-label">Görünümler</div>
+          <button class="nav-item" data-status="today"><span data-icon="sun"></span>Bugün<b data-count="today">0</b></button>
           <button class="nav-item" data-status="all"><span data-icon="list"></span>Tüm görevler<b data-count="all">0</b></button>
           <button class="nav-item" data-status="pending"><span data-icon="clock"></span>Bekleyen<b data-count="pending">0</b></button>
           <button class="nav-item" data-status="completed"><span data-icon="checkCircle"></span>Tamamlanan<b data-count="completed">0</b></button>
@@ -54,6 +65,9 @@
           <button class="nav-item" data-prio="high"><i class="dot dot-high"></i>Yüksek<b data-count="high">0</b></button>
           <button class="nav-item" data-prio="medium"><i class="dot dot-medium"></i>Orta<b data-count="medium">0</b></button>
           <button class="nav-item" data-prio="low"><i class="dot dot-low"></i>Düşük<b data-count="low">0</b></button>
+
+          <div class="nav-label nav-label-row">Kategoriler<button type="button" class="nav-edit" id="catManage" title="Kategorileri düzenle" aria-label="Kategorileri düzenle"><span data-icon="pen"></span></button></div>
+          <div id="sideCats"></div>
         </div>
 
         <div class="nav-group" data-for="notes" hidden>
@@ -128,7 +142,7 @@
         <div class="composer-row">
           <div class="composer-input">
             <span data-icon="sparkles"></span>
-            <input id="taskInput" type="text" maxlength="120" placeholder="Yeni bir görev ekle… örn. Sunum slaytlarını tamamla" aria-label="Görev başlığı" />
+            <input id="taskInput" type="text" maxlength="120" placeholder="Yeni görev… örn. yarın 14:00 sunumu bitir !yüksek #iş" aria-label="Görev başlığı" />
           </div>
           <button type="submit" class="btn-primary" id="addBtn"><span data-icon="plus"></span><em>Görev Ekle</em></button>
         </div>
@@ -153,6 +167,22 @@
             <input id="dueInput" type="date" aria-label="Bitiş tarihi" />
           </label>
           <label class="meta-field">
+            <span data-icon="clock"></span>
+            <input id="timeInput" type="time" aria-label="Saat" />
+          </label>
+          <label class="meta-field">
+            <span data-icon="bell"></span>
+            <select id="remindInput" aria-label="Hatırlatma">
+              <option value="">Hatırlatma yok</option>
+              <option value="0" selected>Zamanında hatırlat</option>
+              <option value="5">5 dk önce</option>
+              <option value="15">15 dk önce</option>
+              <option value="30">30 dk önce</option>
+              <option value="60">1 saat önce</option>
+              <option value="1440">1 gün önce</option>
+            </select>
+          </label>
+          <label class="meta-field">
             <span data-icon="repeat"></span>
             <select id="repeatInput" aria-label="Tekrar">
               <option value="">Tekrar yok</option>
@@ -163,12 +193,14 @@
             </select>
           </label>
         </div>
+        <div class="quick-preview" id="quickPreview" aria-live="polite" hidden></div>
       </form>
 
       <!-- Toolbar -->
       <div class="toolbar">
         <div class="segmented" id="segmented">
           <span class="seg-glider"></span>
+          <button data-status="today">Bugün</button>
           <button data-status="all">Tümü</button>
           <button data-status="pending">Bekleyen</button>
           <button data-status="completed">Tamamlanan</button>
@@ -198,7 +230,7 @@
       <section class="lists">
         <div class="list-block" id="pendingBlock">
           <div class="list-head">
-            <h2><span class="head-icon head-pending" data-icon="clock"></span>Bekleyen görevler</h2>
+            <h2><span class="head-icon head-pending" data-icon="clock"></span><span id="pendingTitle">Bekleyen görevler</span></h2>
             <span class="pill" id="pendingCount">0</span>
           </div>
           <ul class="task-list" id="pendingList"></ul>
@@ -206,7 +238,7 @@
 
         <div class="list-block" id="completedBlock">
           <div class="list-head">
-            <h2><span class="head-icon head-done" data-icon="checkCircle"></span>Tamamlanan görevler</h2>
+            <h2><span class="head-icon head-done" data-icon="checkCircle"></span><span id="completedTitle">Tamamlanan görevler</span></h2>
             <span class="pill" id="completedCount">0</span>
             <button class="link-btn" id="clearDone" type="button">Tamamlananları temizle</button>
           </div>
@@ -332,6 +364,7 @@
     <button type="button" data-view="notes"><span data-icon="note"></span>Notlar</button>
     <button type="button" data-view="calendar"><span data-icon="calendarDays"></span>Takvim</button>
     <button type="button" data-view="stats"><span data-icon="chart"></span>Verimlilik</button>
+    <button type="button" data-theme-toggle aria-label="Temayı değiştir"><span class="theme-ic"></span><span class="theme-lbl">Tema</span></button>
   </nav>
 
   <!-- ============ FOCUS MODE ============ -->
@@ -439,6 +472,23 @@
       <div class="cf-actions">
         <button class="btn-ghost" id="cfCancel" type="button">Vazgeç</button>
         <button class="btn-danger" id="cfOk" type="button">Sil</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kategori yöneticisi -->
+  <div class="confirm-backdrop" id="catDlg" hidden>
+    <div class="confirm cat-dlg" role="dialog" aria-modal="true" aria-labelledby="catDlgTitle">
+      <h3 id="catDlgTitle">Kategoriler</h3>
+      <p>Renk ve adı değiştir, yeni kategori ekle. Silinen kategorideki görevler “Genel”e taşınır.</p>
+      <ul class="cat-rows" id="catRows"></ul>
+      <form class="cat-add" id="catAdd" autocomplete="off">
+        <input type="color" id="catNewColor" value="#a855f7" aria-label="Yeni kategori rengi" />
+        <input type="text" id="catNewName" maxlength="24" placeholder="Yeni kategori adı" aria-label="Yeni kategori adı" />
+        <button type="submit" class="btn-primary btn-sm"><span data-icon="plus"></span><em>Ekle</em></button>
+      </form>
+      <div class="cf-actions">
+        <button class="btn-ghost" id="catDone" type="button">Tamam</button>
       </div>
     </div>
   </div>
