@@ -35,7 +35,7 @@ Ardından tarayıcıda `http://localhost:8000` adresine git.
 | Dosya | Görevi |
 |---|---|
 | `index.html` | Sayfa iskeleti |
-| `style.css` | Tüm stiller (açık/koyu tema, mobil düzen) |
+| `style.css` | Tüm stiller (koyu tema, mobil düzen) |
 | `app.js` | Görevler, istatistik kartları, ortak yardımcılar |
 | `notes.js` | Not defteri ve Markdown düzenleyici |
 | `views.js` | Takvim, odak modu ve verimlilik paneli |
